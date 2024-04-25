@@ -81,9 +81,9 @@ class CamEncode(nn.Module):
         x = self.up1(endpoints['reduction_5'], endpoints['reduction_4'])
         return x
 
+# 128 x 352 20 images???
     def forward(self, x):
         depth, x = self.get_depth_feat(x)
-
         return x
 
 
@@ -192,6 +192,7 @@ class LiftSplatShoot(nn.Module):
 
         x = x.view(B*N, C, imH, imW)
         x = self.camencode(x)
+        print("FEAT SHAPE: ", x.shape)
         x = x.view(B, N, self.camC, self.D, imH//self.downsample, imW//self.downsample)
         x = x.permute(0, 1, 3, 4, 5, 2)
 
@@ -250,6 +251,7 @@ class LiftSplatShoot(nn.Module):
         return x
 
     def forward(self, x, rots, trans, intrins, post_rots, post_trans):
+        print("LIFT SPLAT SHOOT SHAPE:", x.shape)
         x = self.get_voxels(x, rots, trans, intrins, post_rots, post_trans)
         x = self.bevencode(x)
         return x

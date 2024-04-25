@@ -15,7 +15,9 @@ from nuscenes.utils.splits import create_splits_scenes
 from nuscenes.utils.data_classes import Box
 from glob import glob
 
-from .tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx
+from .tools import get_lidar_data, img_transform, normalize_img, gen_dx_bx, denormalize_img
+
+import matplotlib.pyplot as plt
 
 
 class NuscData(torch.utils.data.Dataset):
@@ -24,6 +26,8 @@ class NuscData(torch.utils.data.Dataset):
         self.is_train = is_train
         self.data_aug_conf = data_aug_conf
         self.grid_conf = grid_conf
+
+        self.counter = 0
 
         self.scenes = self.get_scenes()
         self.ixes = self.prepro()
@@ -134,6 +138,7 @@ class NuscData(torch.utils.data.Dataset):
 
             sens = self.nusc.get('calibrated_sensor', samp['calibrated_sensor_token'])
             intrin = torch.Tensor(sens['camera_intrinsic'])
+            # print("CAM: ", cam, "INTRIN: ", intrin)
             rot = torch.Tensor(Quaternion(sens['rotation']).rotation_matrix)
             tran = torch.Tensor(sens['translation'])
 
@@ -147,18 +152,28 @@ class NuscData(torch.utils.data.Dataset):
                                                      rotate=rotate,
                                                      )
             
+            # print("intrin", intrin)
+            # print("rot", rot)
+            # print("tran", tran)
             # for convenience, make augmentation matrices 3x3
             post_tran = torch.zeros(3)
             post_rot = torch.eye(3)
             post_tran[:2] = post_tran2
             post_rot[:2, :2] = post_rot2
+            
+            # cv2img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+            # cv2.imshow(f'img {self.counter}', cv2img)
+            # cv2.waitKey(0)
 
             imgs.append(normalize_img(img))
+
             intrins.append(intrin)
             rots.append(rot)
             trans.append(tran)
             post_rots.append(post_rot)
             post_trans.append(post_tran)
+
+        
 
         return (torch.stack(imgs), torch.stack(rots), torch.stack(trans),
                 torch.stack(intrins), torch.stack(post_rots), torch.stack(post_trans))
@@ -174,12 +189,14 @@ class NuscData(torch.utils.data.Dataset):
         trans = -np.array(egopose['translation'])
         rot = Quaternion(egopose['rotation']).inverse
         img = np.zeros((self.nx[0], self.nx[1]))
+
         for tok in rec['anns']:
             inst = self.nusc.get('sample_annotation', tok)
             # add category for lyft
             if not inst['category_name'].split('.')[0] == 'vehicle':
                 continue
             box = Box(inst['translation'], inst['size'], Quaternion(inst['rotation']))
+
             box.translate(trans)
             box.rotate(rot)
 
@@ -233,6 +250,8 @@ class SegmentationData(NuscData):
         cams = self.choose_cams()
         imgs, rots, trans, intrins, post_rots, post_trans = self.get_image_data(rec, cams)
         binimg = self.get_binimg(rec)
+
+        
         
         return imgs, rots, trans, intrins, post_rots, post_trans, binimg
 
@@ -260,6 +279,9 @@ def compile_data(version, dataroot, data_aug_conf, grid_conf, bsz,
                                               num_workers=nworkers,
                                               drop_last=True,
                                               worker_init_fn=worker_rnd_init)
+    
+
+
     valloader = torch.utils.data.DataLoader(valdata, batch_size=bsz,
                                             shuffle=False,
                                             num_workers=nworkers)

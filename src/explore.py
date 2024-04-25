@@ -10,12 +10,13 @@ mpl.use('Agg')
 import matplotlib.pyplot as plt
 from PIL import Image
 import matplotlib.patches as mpatches
+import numpy as np
 
 from .data import compile_data
 from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
-                    SimpleLoss, get_val_info, add_ego, gen_dx_bx,
-                    get_nusc_maps, plot_nusc_map)
+                    SimpleLoss, get_val_info, add_ego, gen_dx_bx)
 from .models import compile_model
+import cv2
 
 
 def lidar_check(version,
@@ -37,7 +38,7 @@ def lidar_check(version,
                 dbound=[4.0, 45.0, 1.0],
 
                 bsz=1,
-                nworkers=10,
+                nworkers=6,
                 ):
     grid_conf = {
         'xbound': xbound,
@@ -248,9 +249,9 @@ def eval_model_iou(version,
 
 def viz_model_preds(version,
                     modelf,
-                    dataroot='/data/nuscenes',
+                    dataroot='/home/krawus/nuscenes',
                     map_folder='/data/nuscenes/mini',
-                    gpuid=1,
+                    gpuid=0,
                     viz_train=False,
 
                     H=900, W=1600,
@@ -266,7 +267,7 @@ def viz_model_preds(version,
                     dbound=[4.0, 45.0, 1.0],
 
                     bsz=4,
-                    nworkers=10,
+                    nworkers=6,
                     ):
     grid_conf = {
         'xbound': xbound,
@@ -276,6 +277,7 @@ def viz_model_preds(version,
     }
     cams = ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
+
     data_aug_conf = {
                     'resize_lim': resize_lim,
                     'final_dim': final_dim,
@@ -284,13 +286,13 @@ def viz_model_preds(version,
                     'rand_flip': rand_flip,
                     'bot_pct_lim': bot_pct_lim,
                     'cams': cams,
-                    'Ncams': 5,
+                    'Ncams': 6,
                 }
     trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
                                           parser_name='segmentationdata')
     loader = trainloader if viz_train else valloader
-    nusc_maps = get_nusc_maps(map_folder)
+    # nusc_maps = get_nusc_maps(map_folder)
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
@@ -311,7 +313,7 @@ def viz_model_preds(version,
     val = 0.01
     fH, fW = final_dim
     fig = plt.figure(figsize=(3*fW*val, (1.5*fW + 2*fH)*val))
-    gs = mpl.gridspec.GridSpec(3, 3, height_ratios=(1.5*fW, fH, fH))
+    gs = mpl.gridspec.GridSpec(3, 6, height_ratios=(1.5*fW, fH, fH))
     gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
 
     model.eval()
@@ -327,37 +329,59 @@ def viz_model_preds(version,
                     )
             out = out.sigmoid().cpu()
 
+            
+
             for si in range(imgs.shape[0]):
                 plt.clf()
                 for imgi, img in enumerate(imgs[si]):
-                    ax = plt.subplot(gs[1 + imgi // 3, imgi % 3])
+                    ax = plt.subplot(gs[1 + imgi // 3, (imgi % 3) * 2: (imgi % 3) * 2 + 2])
                     showimg = denormalize_img(img)
+                    showimgcv = cv2.cvtColor(np.array(showimg), cv2.COLOR_RGB2BGR)
+                    # cv2.imshow(f'img{cams[imgi]}', showimgcv)
+                    # # cv2.imshow('showimg', )
+                    # cv2.imshow('binimg vis', binimgs[si].squeeze(0).numpy())
+                    # cv2.imshow('out', out[si].squeeze(0).numpy())
+                    # cv2.waitKey(10000)
                     # flip the bottom images
                     if imgi > 2:
                         showimg = showimg.transpose(Image.FLIP_LEFT_RIGHT)
                     plt.imshow(showimg)
                     plt.axis('off')
-                    plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.92), xycoords='axes fraction')
+                    plt.annotate(cams[imgi].replace('_', ' '), (0.01, 0.92), xycoords='axes fraction', color='red')
 
-                ax = plt.subplot(gs[0, :])
+                # display network output
+                ax = plt.subplot(gs[0, :3])
                 ax.get_xaxis().set_ticks([])
                 ax.get_yaxis().set_ticks([])
-                plt.setp(ax.spines.values(), color='b', linewidth=2)
+                # border
+                # plt.setp(ax.spines.values(), color='b', linewidth=2)
                 plt.legend(handles=[
                     mpatches.Patch(color=(0.0, 0.0, 1.0, 1.0), label='Output Vehicle Segmentation'),
                     mpatches.Patch(color='#76b900', label='Ego Vehicle'),
-                    mpatches.Patch(color=(1.00, 0.50, 0.31, 0.8), label='Map (for visualization purposes only)')
                 ], loc=(0.01, 0.86))
-                plt.imshow(out[si].squeeze(0), vmin=0, vmax=1, cmap='Blues')
 
-                # plot static map (improves visualization)
-                rec = loader.dataset.ixes[counter]
-                plot_nusc_map(rec, nusc_maps, loader.dataset.nusc, scene2map, dx, bx)
-                plt.xlim((out.shape[3], 0))
-                plt.ylim((0, out.shape[3]))
+                
+                plt.imshow(np.rot90(out[si].squeeze(0), 2), vmin=0, vmax=1, cmap='Blues')
                 add_ego(bx, dx)
+
+
+                # display network ground truth output
+                ax = plt.subplot(gs[0, 3:])
+                ax.get_xaxis().set_ticks([])
+                ax.get_yaxis().set_ticks([])
+                # border
+                # plt.setp(ax.spines.values(), color='b', linewidth=2)
+                plt.legend(handles=[
+                    mpatches.Patch(color=(0.0, 0.0, 1.0, 1.0), label='Ground Truth Vehicle Segmentation'),
+                    mpatches.Patch(color='#76b900', label='Ego Vehicle'),
+                ], loc=(0.01, 0.86))
+                plt.imshow(np.rot90(binimgs[si].squeeze(0), 2), vmin=0, vmax=1, cmap='Blues')
+                add_ego(bx, dx)
+
+
+
 
                 imname = f'eval{batchi:06}_{si:03}.jpg'
                 print('saving', imname)
-                plt.savefig(imname)
+                plt.savefig('visualization_output/'+imname)
                 counter += 1

@@ -12,109 +12,12 @@ from PIL import Image
 import matplotlib.patches as mpatches
 import numpy as np
 
-from .data import compile_data
+# from .data import compile_data
 from .tools import (ego_to_cam, get_only_in_img_mask, denormalize_img,
                     SimpleLoss, get_val_info, add_ego, gen_dx_bx)
 from .models import compile_model
 import cv2
-
-
-def lidar_check(version,
-                dataroot='/data/nuscenes',
-                show_lidar=True,
-                viz_train=False,
-                nepochs=1,
-
-                H=900, W=1600,
-                resize_lim=(0.193, 0.225),
-                final_dim=(128, 352),
-                bot_pct_lim=(0.0, 0.22),
-                rot_lim=(-5.4, 5.4),
-                rand_flip=True,
-
-                xbound=[-50.0, 50.0, 0.5],
-                ybound=[-50.0, 50.0, 0.5],
-                zbound=[-10.0, 10.0, 20.0],
-                dbound=[4.0, 45.0, 1.0],
-
-                bsz=1,
-                nworkers=6,
-                ):
-    grid_conf = {
-        'xbound': xbound,
-        'ybound': ybound,
-        'zbound': zbound,
-        'dbound': dbound,
-    }
-    cams = ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
-                             'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT']
-    data_aug_conf = {
-                    'resize_lim': resize_lim,
-                    'final_dim': final_dim,
-                    'rot_lim': rot_lim,
-                    'H': H, 'W': W,
-                    'rand_flip': rand_flip,
-                    'bot_pct_lim': bot_pct_lim,
-                    'cams': cams,
-                    'Ncams': 5,
-                }
-    trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
-                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='vizdata')
-
-    loader = trainloader if viz_train else valloader
-
-    model = compile_model(grid_conf, data_aug_conf, outC=1)
-
-    rat = H / W
-    val = 10.1
-    fig = plt.figure(figsize=(val + val/3*2*rat*3, val/3*2*rat))
-    gs = mpl.gridspec.GridSpec(2, 6, width_ratios=(1, 1, 1, 2*rat, 2*rat, 2*rat))
-    gs.update(wspace=0.0, hspace=0.0, left=0.0, right=1.0, top=1.0, bottom=0.0)
-
-    for epoch in range(nepochs):
-        for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, pts, binimgs) in enumerate(loader):
-
-            img_pts = model.get_geometry(rots, trans, intrins, post_rots, post_trans)
-
-            for si in range(imgs.shape[0]):
-                plt.clf()
-                final_ax = plt.subplot(gs[:, 5:6])
-                for imgi, img in enumerate(imgs[si]):
-                    ego_pts = ego_to_cam(pts[si], rots[si, imgi], trans[si, imgi], intrins[si, imgi])
-                    mask = get_only_in_img_mask(ego_pts, H, W)
-                    plot_pts = post_rots[si, imgi].matmul(ego_pts) + post_trans[si, imgi].unsqueeze(1)
-
-                    ax = plt.subplot(gs[imgi // 3, imgi % 3])
-                    showimg = denormalize_img(img)
-                    plt.imshow(showimg)
-                    if show_lidar:
-                        plt.scatter(plot_pts[0, mask], plot_pts[1, mask], c=ego_pts[2, mask],
-                                s=5, alpha=0.1, cmap='jet')
-                    # plot_pts = post_rots[si, imgi].matmul(img_pts[si, imgi].view(-1, 3).t()) + post_trans[si, imgi].unsqueeze(1)
-                    # plt.scatter(img_pts[:, :, :, 0].view(-1), img_pts[:, :, :, 1].view(-1), s=1)
-                    plt.axis('off')
-
-                    plt.sca(final_ax)
-                    plt.plot(img_pts[si, imgi, :, :, :, 0].view(-1), img_pts[si, imgi, :, :, :, 1].view(-1), '.', label=cams[imgi].replace('_', ' '))
-                
-                plt.legend(loc='upper right')
-                final_ax.set_aspect('equal')
-                plt.xlim((-50, 50))
-                plt.ylim((-50, 50))
-
-                ax = plt.subplot(gs[:, 3:4])
-                plt.scatter(pts[si, 0], pts[si, 1], c=pts[si, 2], vmin=-5, vmax=5, s=5)
-                plt.xlim((-50, 50))
-                plt.ylim((-50, 50))
-                ax.set_aspect('equal')
-
-                ax = plt.subplot(gs[:, 4:5])
-                plt.imshow(binimgs[si].squeeze(0).T, origin='lower', cmap='Greys', vmin=0, vmax=1)
-
-                imname = f'lcheck{epoch:03}_{batchi:05}_{si:02}.jpg'
-                print('saving', imname)
-                plt.savefig(imname)
+from .lunarsim_data import compile_trainval_data, compile_test_data
 
 
 def cumsum_check(version,
@@ -153,7 +56,7 @@ def cumsum_check(version,
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
                     'Ncams': 6,
                 }
-    trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
+    trainloader, valloader = compile_trainval_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
                                           parser_name='segmentationdata')
 
@@ -229,9 +132,8 @@ def eval_model_iou(version,
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
                     'Ncams': 5,
                 }
-    trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
-                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='segmentationdata')
+    trainloader, valloader = compile_trainval_data(version, dataroot, data_aug_conf=data_aug_conf,
+                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers)
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
@@ -247,27 +149,27 @@ def eval_model_iou(version,
     print(val_info)
 
 
-def viz_model_preds(version,
+def viz_lunar_preds(version,
                     modelf,
                     dataroot='/home/krawus/nuscenes',
                     map_folder='/data/nuscenes/mini',
                     gpuid=0,
                     viz_train=False,
 
-                    H=900, W=1600,
+                    H=768, W=1366,
                     resize_lim=(0.193, 0.225),
                     final_dim=(128, 352),
                     bot_pct_lim=(0.0, 0.22),
                     rot_lim=(-5.4, 5.4),
                     rand_flip=True,
 
-                    xbound=[-50.0, 50.0, 0.5],
-                    ybound=[-50.0, 50.0, 0.5],
+                    xbound=[-34.0, 34.0, 0.34],
+                    ybound=[-34.0, 34.0, 0.34],
                     zbound=[-10.0, 10.0, 20.0],
-                    dbound=[4.0, 45.0, 1.0],
+                    dbound=[1.0, 41.0, 1.0],
 
-                    bsz=4,
-                    nworkers=6,
+                    bsz=3,
+                    nworkers=8,
                     ):
     grid_conf = {
         'xbound': xbound,
@@ -288,10 +190,14 @@ def viz_model_preds(version,
                     'cams': cams,
                     'Ncams': 6,
                 }
-    trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
-                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='segmentationdata')
-    loader = trainloader if viz_train else valloader
+    # testloader = compile_test_data(dataroot, data_aug_conf=data_aug_conf,
+    #                                       grid_conf=grid_conf, bsz=bsz, nworkers=nworkers)
+    
+    trainloader, valloader = compile_trainval_data(dataroot, data_aug_conf=data_aug_conf,
+                                                   grid_conf=grid_conf, bsz=bsz, nworkers=nworkers)
+    # loader = trainloader if viz_train else 
+    # loader = testloader
+    loader = valloader
     # nusc_maps = get_nusc_maps(map_folder)
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
@@ -303,11 +209,6 @@ def viz_model_preds(version,
 
     dx, bx, _ = gen_dx_bx(grid_conf['xbound'], grid_conf['ybound'], grid_conf['zbound'])
     dx, bx = dx[:2].numpy(), bx[:2].numpy()
-
-    scene2map = {}
-    for rec in loader.dataset.nusc.scene:
-        log = loader.dataset.nusc.get('log', rec['log_token'])
-        scene2map[rec['name']] = log['location']
 
 
     val = 0.01
@@ -356,12 +257,13 @@ def viz_model_preds(version,
                 # border
                 # plt.setp(ax.spines.values(), color='b', linewidth=2)
                 plt.legend(handles=[
-                    mpatches.Patch(color=(0.0, 0.0, 1.0, 1.0), label='Output Vehicle Segmentation'),
+                    mpatches.Patch(color=(0.0, 0.0, 1.0, 1.0), label='Output Rock Segmentation'),
                     mpatches.Patch(color='#76b900', label='Ego Vehicle'),
                 ], loc=(0.01, 0.86))
 
                 
-                plt.imshow(np.rot90(out[si].squeeze(0), 2), vmin=0, vmax=1, cmap='Blues')
+                # plt.imshow(np.rot90(out[si].squeeze(0), 2), vmin=0, vmax=1, cmap='Blues')
+                plt.imshow(out[si].squeeze(0), vmin=0, vmax=1, cmap='Blues')
                 add_ego(bx, dx)
 
 
@@ -372,10 +274,11 @@ def viz_model_preds(version,
                 # border
                 # plt.setp(ax.spines.values(), color='b', linewidth=2)
                 plt.legend(handles=[
-                    mpatches.Patch(color=(0.0, 0.0, 1.0, 1.0), label='Ground Truth Vehicle Segmentation'),
+                    mpatches.Patch(color=(0.0, 0.0, 1.0, 1.0), label='Ground Truth Rock Segmentation'),
                     mpatches.Patch(color='#76b900', label='Ego Vehicle'),
                 ], loc=(0.01, 0.86))
-                plt.imshow(np.rot90(binimgs[si].squeeze(0), 2), vmin=0, vmax=1, cmap='Blues')
+                # plt.imshow(np.rot90(binimgs[si].squeeze(0), 2), vmin=0, vmax=1, cmap='Blues')
+                plt.imshow(binimgs[si].squeeze(0), vmin=0, vmax=1, cmap='Blues')
                 add_ego(bx, dx)
 
 
@@ -385,3 +288,4 @@ def viz_model_preds(version,
                 print('saving', imname)
                 plt.savefig('visualization_output/'+imname)
                 counter += 1
+

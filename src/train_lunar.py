@@ -11,36 +11,47 @@ import numpy as np
 import os
 
 from .models import compile_model
-from .data import compile_data
-from .tools import SimpleLoss, get_batch_iou, get_val_info
+from .lunarsim_data import compile_trainval_data, compile_test_data
+from .tools import SimpleLoss, get_batch_iou, get_val_info, denormalize_img
 
+# 1px -> 0.045m
+# 1m -> 22.4px
+def train(
+            dataroot='/LunarSim',
+            nepochs=100000,
+            gpuid=0,
 
-def train(version,
-            dataroot='/data/nuscenes',
-            nepochs=10000,
-            gpuid=1,
-
-            H=900, W=1600,
+            H=768, W=1366,
             resize_lim=(0.193, 0.225),
             final_dim=(128, 352),
             bot_pct_lim=(0.0, 0.22),
             rot_lim=(-5.4, 5.4),
             rand_flip=True,
-            ncams=5,
+            ncams=6,
             max_grad_norm=5.0,
             pos_weight=2.13,
             logdir='./runs',
+            from_checkpoint=False,
+            checkpoint_path='./runs/checkpoints',
 
-            xbound=[-50.0, 50.0, 0.5],
-            ybound=[-50.0, 50.0, 0.5],
+
+            xbound=[-34.0, 34.0, 0.34],
+            ybound=[-34.0, 34.0, 0.34],
             zbound=[-10.0, 10.0, 20.0],
-            dbound=[4.0, 45.0, 1.0],
+            dbound=[1.0, 42.0, 1.0],
+            # xbound=[-50.0, 50.0, 0.5],
+            # ybound=[-50.0, 50.0, 0.5],
+            # zbound=[-10.0, 10.0, 20.0],
+            # dbound=[4.0, 45.0, 1.0],
 
             bsz=4,
-            nworkers=10,
-            lr=1e-3,
-            weight_decay=1e-7,
+            nworkers=8,
+            # lr=1e-3,
+            lr=1e-4,
+            # weight_decay=1e-7,
+            weight_decay=1e-8
             ):
+    
     grid_conf = {
         'xbound': xbound,
         'ybound': ybound,
@@ -58,9 +69,10 @@ def train(version,
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
                     'Ncams': ncams,
                 }
-    trainloader, valloader = compile_data(version, dataroot, data_aug_conf=data_aug_conf,
-                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers,
-                                          parser_name='segmentationdata')
+    
+    trainloader, valloader = compile_trainval_data(dataroot, data_aug_conf=data_aug_conf,
+                                                   grid_conf=grid_conf, bsz=bsz, nworkers=nworkers)
+    
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
@@ -72,12 +84,31 @@ def train(version,
     loss_fn = SimpleLoss(pos_weight).cuda(gpuid)
 
     writer = SummaryWriter(logdir=logdir)
-    val_step = 1000 if version == 'mini' else 10000
+    val_step = len(trainloader)
+
+    counter = 0
+    start_epoch = 0
+
+
+    if from_checkpoint == True:
+        if os.path.isfile(checkpoint_path):
+            model_state = load_checkpoint(checkpoint_path, model, opt)
+            print('Checkpoint found at iteration: ', model_state['iteration'])
+        else:
+            exit('Checkpoint not found')
+
+        counter = model_state['iteration']
+        start_epoch = model_state['epoch']
+
+        print('Continuing training from checkpoint at iteration: ', counter)
+        print('Starting epoch: ', start_epoch)
+
 
     model.train()
-    counter = 0
-    for epoch in range(nepochs):
+    
+    for epoch in range(start_epoch, nepochs):
         np.random.seed()
+        print('Epoch: ', epoch)
         for batchi, (imgs, rots, trans, intrins, post_rots, post_trans, binimgs) in enumerate(trainloader):
             t0 = time()
             opt.zero_grad()
@@ -88,6 +119,7 @@ def train(version,
                     post_rots.to(device),
                     post_trans.to(device),
                     )
+            
             binimgs = binimgs.to(device)
             loss = loss_fn(preds, binimgs)
             loss.backward()
@@ -97,7 +129,7 @@ def train(version,
             t1 = time()
 
             if counter % 10 == 0:
-                print(counter, loss.item())
+                print("iteration: ", counter, "loss: ", loss.item())
                 writer.add_scalar('train/loss', loss, counter)
 
             if counter % 50 == 0:
@@ -112,9 +144,33 @@ def train(version,
                 writer.add_scalar('val/loss', val_info['loss'], counter)
                 writer.add_scalar('val/iou', val_info['iou'], counter)
 
-            if counter % val_step == 0:
+            if counter % (val_step*10) == 0:
                 model.eval()
                 mname = os.path.join(logdir, "model{}.pt".format(counter))
                 print('saving', mname)
                 torch.save(model.state_dict(), mname)
+                print('saving checkpoint...')
+                save_checkpoint(model, opt, epoch, logdir + '/checkpoints', counter)
                 model.train()
+
+
+
+# Saving the checkpoint
+def save_checkpoint(model, optimizer, epoch, logdir, counter):
+    state = {
+        'iteration' : counter,
+        'epoch': epoch,
+        'state_dict': model.state_dict(),
+        'optimizer': optimizer.state_dict(),
+    }
+    filepath = os.path.join(logdir, f'checkpoint_{counter}_epoch_{epoch}.pth')
+    torch.save(state, filepath)
+
+
+
+def load_checkpoint(filepath, model, optimizer):
+    checkpoint = torch.load(filepath)
+    model.load_state_dict(checkpoint['state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer'])
+    return checkpoint
+

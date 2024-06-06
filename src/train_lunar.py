@@ -12,7 +12,7 @@ import os
 
 from .models import compile_model
 from .lunarsim_data import compile_trainval_data, compile_test_data
-from .tools import SimpleLoss, get_batch_iou, get_val_info
+from .tools import SimpleLoss, get_batch_iou, get_val_info, denormalize_img
 
 # 1px -> 0.045m
 # 1m -> 22.4px
@@ -38,12 +38,18 @@ def train(
             xbound=[-34.0, 34.0, 0.34],
             ybound=[-34.0, 34.0, 0.34],
             zbound=[-10.0, 10.0, 20.0],
-            dbound=[1.0, 41.0, 1.0],
+            dbound=[1.0, 42.0, 1.0],
+            # xbound=[-50.0, 50.0, 0.5],
+            # ybound=[-50.0, 50.0, 0.5],
+            # zbound=[-10.0, 10.0, 20.0],
+            # dbound=[4.0, 45.0, 1.0],
 
-            bsz=3,
+            bsz=4,
             nworkers=8,
-            lr=1e-3,
-            weight_decay=1e-7,
+            # lr=1e-3,
+            lr=1e-4,
+            # weight_decay=1e-7,
+            weight_decay=1e-8
             ):
     
     grid_conf = {
@@ -138,7 +144,7 @@ def train(
                 writer.add_scalar('val/loss', val_info['loss'], counter)
                 writer.add_scalar('val/iou', val_info['iou'], counter)
 
-            if counter % val_step == 0:
+            if counter % (val_step*10) == 0:
                 model.eval()
                 mname = os.path.join(logdir, "model{}.pt".format(counter))
                 print('saving', mname)

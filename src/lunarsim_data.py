@@ -215,37 +215,6 @@ def worker_rnd_init(x):
     np.random.seed(13 + x)
 
 
-# def compile_data(version, dataroot, data_aug_conf, grid_conf, bsz,
-#                  nworkers):
-    
-#     traindata = SegmentationData(dataroot, is_train=True, data_aug_conf=data_aug_conf,
-#                          grid_conf=grid_conf, train_test_val='train')
-
-#     valdata = SegmentationData(dataroot, is_train=False, data_aug_conf=data_aug_conf,
-#                        grid_conf=grid_conf, train_test_val='val')
-    
-#     testdata = SegmentationData(dataroot, is_train=False, data_aug_conf=data_aug_conf,
-#                        grid_conf=grid_conf, train_test_val='test')
-
-#     trainloader = torch.utils.data.DataLoader(traindata, batch_size=bsz,
-#                                               shuffle=True,
-#                                               num_workers=nworkers,
-#                                               drop_last=True,
-#                                               worker_init_fn=worker_rnd_init)
-    
-
-#     valloader = torch.utils.data.DataLoader(valdata, batch_size=bsz,
-#                                             shuffle=False,
-#                                             num_workers=nworkers)
-    
-    
-#     testloader = torch.utils.data.DataLoader(testdata, batch_size=bsz,
-#                                             shuffle=False,
-#                                             num_workers=nworkers)
-
-#     return trainloader, valloader, testloader
-
-
 def compile_trainval_data(dataroot, data_aug_conf, grid_conf, bsz, nworkers):
 
     traindata = SegmentationData(dataroot, is_train=True, data_aug_conf=data_aug_conf,

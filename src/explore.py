@@ -24,20 +24,21 @@ def cumsum_check(version,
                 dataroot='/data/nuscenes',
                 gpuid=1,
 
-                H=900, W=1600,
+                H=768, W=1366,
                 resize_lim=(0.193, 0.225),
                 final_dim=(128, 352),
                 bot_pct_lim=(0.0, 0.22),
                 rot_lim=(-5.4, 5.4),
                 rand_flip=True,
 
-                xbound=[-50.0, 50.0, 0.5],
-                ybound=[-50.0, 50.0, 0.5],
+              
+                xbound=[-34.0, 34.0, 0.34],
+                ybound=[-34.0, 34.0, 0.34],
                 zbound=[-10.0, 10.0, 20.0],
-                dbound=[4.0, 45.0, 1.0],
+                dbound=[1.0, 42.0, 1.0],
 
                 bsz=4,
-                nworkers=10,
+                nworkers=8,
                 ):
     grid_conf = {
         'xbound': xbound,
@@ -98,22 +99,22 @@ def cumsum_check(version,
 def eval_model_iou(version,
                 modelf,
                 dataroot='/data/nuscenes',
-                gpuid=1,
+                gpuid=0,
 
-                H=900, W=1600,
+                H=768, W=1366,
                 resize_lim=(0.193, 0.225),
                 final_dim=(128, 352),
                 bot_pct_lim=(0.0, 0.22),
                 rot_lim=(-5.4, 5.4),
                 rand_flip=True,
-
-                xbound=[-50.0, 50.0, 0.5],
-                ybound=[-50.0, 50.0, 0.5],
+              
+                xbound=[-34.0, 34.0, 0.34],
+                ybound=[-34.0, 34.0, 0.34],
                 zbound=[-10.0, 10.0, 20.0],
-                dbound=[4.0, 45.0, 1.0],
+                dbound=[1.0, 42.0, 1.0],
 
                 bsz=4,
-                nworkers=10,
+                nworkers=8,
                 ):
     grid_conf = {
         'xbound': xbound,
@@ -130,7 +131,7 @@ def eval_model_iou(version,
                     'bot_pct_lim': bot_pct_lim,
                     'cams': ['CAM_FRONT_LEFT', 'CAM_FRONT', 'CAM_FRONT_RIGHT',
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
-                    'Ncams': 5,
+                    'Ncams': 6,
                 }
     trainloader, valloader = compile_trainval_data(version, dataroot, data_aug_conf=data_aug_conf,
                                           grid_conf=grid_conf, bsz=bsz, nworkers=nworkers)
@@ -166,7 +167,7 @@ def viz_lunar_preds(version,
                     xbound=[-34.0, 34.0, 0.34],
                     ybound=[-34.0, 34.0, 0.34],
                     zbound=[-10.0, 10.0, 20.0],
-                    dbound=[1.0, 41.0, 1.0],
+                    dbound=[1.0, 42.0, 1.0],
 
                     bsz=3,
                     nworkers=8,

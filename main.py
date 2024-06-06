@@ -7,17 +7,13 @@ Authors: Jonah Philion and Sanja Fidler
 from fire import Fire
 
 import src
-import src.load_data
-import src.train_lunar
 
 
 if __name__ == '__main__':
     Fire({
         'cumsum_check': src.explore.cumsum_check,
-
-        'train': src.train.train,
         'eval_model_iou': src.explore.eval_model_iou,
         'load_data' : src.load_data.load_data,
         'train_lunar': src.train_lunar.train,
-        'viz_lunar_preds': src.explore.viz_lunar_preds
+        'viz_lunar_preds': src.explore.viz_lunar_preds,
     })

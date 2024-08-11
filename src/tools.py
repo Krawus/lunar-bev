@@ -16,64 +16,6 @@ import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 
-
-def get_lidar_data(nusc, sample_rec, nsweeps, min_distance):
-    """
-    Returns at most nsweeps of lidar in the ego frame.
-    Returned tensor is 5(x, y, z, reflectance, dt) x N
-    Adapted from https://github.com/nutonomy/nuscenes-devkit/blob/master/python-sdk/nuscenes/utils/data_classes.py#L56
-    """
-    points = np.zeros((5, 0))
-
-    # Get reference pose and timestamp.
-    ref_sd_token = sample_rec['data']['LIDAR_TOP']
-    ref_sd_rec = nusc.get('sample_data', ref_sd_token)
-    ref_pose_rec = nusc.get('ego_pose', ref_sd_rec['ego_pose_token'])
-    ref_cs_rec = nusc.get('calibrated_sensor', ref_sd_rec['calibrated_sensor_token'])
-    ref_time = 1e-6 * ref_sd_rec['timestamp']
-
-    # Homogeneous transformation matrix from global to _current_ ego car frame.
-    car_from_global = transform_matrix(ref_pose_rec['translation'], Quaternion(ref_pose_rec['rotation']),
-                                        inverse=True)
-
-    # Aggregate current and previous sweeps.
-    sample_data_token = sample_rec['data']['LIDAR_TOP']
-    current_sd_rec = nusc.get('sample_data', sample_data_token)
-    for _ in range(nsweeps):
-        # Load up the pointcloud and remove points close to the sensor.
-        current_pc = LidarPointCloud.from_file(os.path.join(nusc.dataroot, current_sd_rec['filename']))
-        current_pc.remove_close(min_distance)
-
-        # Get past pose.
-        current_pose_rec = nusc.get('ego_pose', current_sd_rec['ego_pose_token'])
-        global_from_car = transform_matrix(current_pose_rec['translation'],
-                                            Quaternion(current_pose_rec['rotation']), inverse=False)
-
-        # Homogeneous transformation matrix from sensor coordinate frame to ego car frame.
-        current_cs_rec = nusc.get('calibrated_sensor', current_sd_rec['calibrated_sensor_token'])
-        car_from_current = transform_matrix(current_cs_rec['translation'], Quaternion(current_cs_rec['rotation']),
-                                            inverse=False)
-
-        # Fuse four transformation matrices into one and perform transform.
-        trans_matrix = reduce(np.dot, [car_from_global, global_from_car, car_from_current])
-        current_pc.transform(trans_matrix)
-
-        # Add time vector which can be used as a temporal feature.
-        time_lag = ref_time - 1e-6 * current_sd_rec['timestamp']
-        times = time_lag * np.ones((1, current_pc.nbr_points()))
-
-        new_points = np.concatenate((current_pc.points, times), 0)
-        points = np.concatenate((points, new_points), 1)
-
-        # Abort if there are no previous sweeps.
-        if current_sd_rec['prev'] == '':
-            break
-        else:
-            current_sd_rec = nusc.get('sample_data', current_sd_rec['prev'])
-
-    return points
-
-
 def ego_to_cam(points, rot, trans, intrins):
     """Transform points (3 x N) from ego frame into a pinhole camera
     """
@@ -171,7 +113,6 @@ normalize_img = torchvision.transforms.Compose((
 def gen_dx_bx(xbound, ybound, zbound):
     dx = torch.Tensor([row[2] for row in [xbound, ybound, zbound]])
     bx = torch.Tensor([row[0] + row[2]/2.0 for row in [xbound, ybound, zbound]])
-    # nx = torch.LongTensor([(row[1] - row[0]) / row[2] for row in [xbound, ybound, zbound]])
     nx = torch.LongTensor([round((row[1] - row[0]) / row[2]) for row in [xbound, ybound, zbound]])
 
     return dx, bx, nx
@@ -279,5 +220,20 @@ def add_ego(bx, dx):
     ])
     pts = (pts - bx) / dx
     pts[:, [0,1]] = pts[:, [1,0]]
-    plt.fill(pts[:, 0], pts[:, 1], '#76b900')
+    plt.fill(pts[:, 0], pts[:, 1], 'g')
+
+def add_ego_px_coords(x, y):
+
+    # hard code rover vizualization
+    pts = np.array([[6, 0], [6, 1], [6, 2], [6, 3], [6, 4], [1, 5], [2, 5], [4, 5], [5, 5], [6, 5], [13, 5], [14, 5], [1, 6], [2, 6], [3, 6], [5, 6], [12, 6], [13, 6], [14, 6], [1, 7], [2, 7], [4, 7], [5, 7], [7, 7], [8, 7], [9, 7], [10, 7], [11, 7], [13, 7], [14, 7], [2, 8], [3, 8], [4, 8], [5, 8], [6, 8], [7, 8], [8, 8], [9, 8], [10, 8], [11, 8], [12, 8], [13, 8], [2, 9], [3, 9], [4, 9], [5, 9], [6, 9], [7, 9], [8, 9], [9, 9], [10, 9], [11, 9], [12, 9], [13, 9], [3, 10], [4, 10], [5, 10], [6, 10], [7, 10], [8, 10], [9, 10], [10, 10], [11, 10], [3, 11], [4, 11], [5, 11], [6, 11], [7, 11], [8, 11], [9, 11], [10, 11], [11, 11], [12, 11], [0, 12], [1, 12], [2, 12], [3, 12], [4, 12], [5, 12], [6, 12], [7, 12], [8, 12], [9, 12], [10, 12], [12, 12], [13, 12], [14, 12], [15, 12], [0, 13], [1, 13], [2, 13], [3, 13], [4, 13], [5, 13], [6, 13], [7, 13], [8, 13], [9, 13], [10, 13], [11, 13], [12, 13], [13, 13], [14, 13], [15, 13], [0, 14], [1, 14], [2, 14], [3, 14], [5, 14], [6, 14], [7, 14], [8, 14], [9, 14], [10, 14], [11, 14], [12, 14], [13, 14], [14, 14], [15, 14], [2, 15], [3, 15], [5, 15], [6, 15], [7, 15], [8, 15], [9, 15], [10, 15], [12, 15], [13, 15], [2, 16], [4, 16], [5, 16], [6, 16], [7, 16], [8, 16], [9, 16], [10, 16], [11, 16], [13, 16], [2, 17], [5, 17], [6, 17], [7, 17], [8, 17], [9, 17], [10, 17], [11, 17], [13, 17], [1, 18], [2, 18], [4, 18], [5, 18], [6, 18], [7, 18], [8, 18], [9, 18], [10, 18], [11, 18], [13, 18], [14, 18], [1, 19], [2, 19], [3, 19], [4, 19], [5, 19], [6, 19], [7, 19], [8, 19], [9, 19], [10, 19], [11, 19], [12, 19], [13, 19], [14, 19], [1, 20], [2, 20], [5, 20], [6, 20], [7, 20], [8, 20], [9, 20], [10, 20], [13, 20], [14, 20], [6, 21], [7, 21], [8, 21], [9, 21], [5, 22], [6, 22], [7, 22], [8, 22], [9, 22]])
+    # move origin to rover center
+    pts[:, 0] -= 8
+    pts[:, 1] -= 12
+    
+    # move rover to image center
+    pts[:, 0] += x
+    pts[:, 1] += y
+
+    plt.scatter(pts[:, 0], pts[:, 1], marker='s', c='g', s=1)
+
 

@@ -6,7 +6,7 @@ import numpy as np
 import os
 
 from .models import compile_model
-from .lunarsim_data import compile_trainval_data
+from .lunarsim_data import compile_trainval_data, compile_data_tts
 from .tools import SimpleLoss, get_batch_iou, get_val_info
 
 
@@ -27,10 +27,10 @@ def load_data(
             pos_weight=2.13,
             logdir='./runs',
 
-            xbound=[-34.0, 34.0, 0.34],
-            ybound=[-34.0, 34.0, 0.34],
+            xbound=[-16.0, 16.0, 0.16],
+            ybound=[-16.0, 16.0, 0.16],
             zbound=[-10.0, 10.0, 20.0],
-            dbound=[1.0, 41.0, 1.0],
+            dbound=[0.3, 21.3, 0.5],
 
             bsz=3,
             nworkers=8,
@@ -54,10 +54,16 @@ def load_data(
                              'CAM_BACK_LEFT', 'CAM_BACK', 'CAM_BACK_RIGHT'],
                     'Ncams': ncams,
                 }
-    trainloader, valloader = compile_trainval_data(dataroot, data_aug_conf=data_aug_conf,
-                                          grid_conf=grid_conf, bsz=bsz, nworkers=nworkers)
+    # trainloader, valloader = compile_trainval_data(dataroot, data_aug_conf=data_aug_conf,
+    #                                       grid_conf=grid_conf, bsz=bsz, nworkers=nworkers)
+
+    print("COMPILING USING TTS")
+    trainloader, valloader = compile_data_tts(dataroot, data_aug_conf=data_aug_conf,
+                                            grid_conf=grid_conf, bsz=bsz, nworkers=nworkers)
     
     
+
+
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
     
     model = compile_model(grid_conf, data_aug_conf, outC=1)

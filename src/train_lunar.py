@@ -11,11 +11,11 @@ import numpy as np
 import os
 
 from .models import compile_model
-from .lunarsim_data import compile_trainval_data, compile_test_data
+from .lunarsim_data import compile_trainval_data, compile_test_data, compile_data_tts
 from .tools import SimpleLoss, get_batch_iou, get_val_info, denormalize_img
 
-# 1px -> 0.045m
-# 1m -> 22.4px
+# 1px -> 0.16m
+# 1m -> 6.24px
 def train(
             dataroot='/LunarSim',
             nepochs=100000,
@@ -33,23 +33,19 @@ def train(
             logdir='./runs',
             from_checkpoint=False,
             checkpoint_path='./runs/checkpoints',
+            use_tts=False,
 
-
-            xbound=[-34.0, 34.0, 0.34],
-            ybound=[-34.0, 34.0, 0.34],
+            xbound=[-50.0, 50.0, 0.5],
+            ybound=[-50.0, 50.0, 0.5],
             zbound=[-10.0, 10.0, 20.0],
             dbound=[1.0, 42.0, 1.0],
-            # xbound=[-50.0, 50.0, 0.5],
-            # ybound=[-50.0, 50.0, 0.5],
-            # zbound=[-10.0, 10.0, 20.0],
-            # dbound=[4.0, 45.0, 1.0],
 
             bsz=4,
             nworkers=8,
-            # lr=1e-3,
-            lr=1e-4,
-            # weight_decay=1e-7,
-            weight_decay=1e-8
+            lr=1e-3,
+            # lr=1e-4,
+            weight_decay=1e-7,
+            # weight_decay=1e-8
             ):
     
     grid_conf = {
@@ -70,9 +66,13 @@ def train(
                     'Ncams': ncams,
                 }
     
-    trainloader, valloader = compile_trainval_data(dataroot, data_aug_conf=data_aug_conf,
-                                                   grid_conf=grid_conf, bsz=bsz, nworkers=nworkers)
-    
+    if not use_tts:
+        trainloader, valloader = compile_trainval_data(dataroot, data_aug_conf=data_aug_conf,
+                                                    grid_conf=grid_conf, bsz=bsz, nworkers=nworkers)
+    else:
+        trainloader, valloader = compile_data_tts(dataroot, data_aug_conf=data_aug_conf,
+                                                grid_conf=grid_conf, bsz=bsz, nworkers=nworkers)
+
 
     device = torch.device('cpu') if gpuid < 0 else torch.device(f'cuda:{gpuid}')
 
